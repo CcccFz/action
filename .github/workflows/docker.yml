@@ -1,0 +1,129 @@
+name: Docker CI/CD Workflow
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - '*.*.*'
+
+env:
+  SSH_HOST: ${{ secrets.SSH_HOST }}
+  SSH_KEY:  ${{ secrets.SSH_KEY }}
+  REGISTRY_HOST: https://registry.cn-shanghai.aliyuncs.com
+  REGISTRY_USERNAME: ${{ secrets.ACR_USERNAME }}
+  REGISTRY_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+  SLACK_CHANNEL: github-action-notify
+  SLACK_USERNAME: CcccFz
+  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      VERSION: ${{ steps.gen-version.outputs.VERSION }}
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v3
+
+      - name: setup golang
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.16.7'
+
+      - name: cache golang
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: build project
+        run: make build
+
+      - name: gen version
+        id: gen-version
+        run: |
+          version=`TZ='Asia/Shanghai' date '+%Y%m%d_%H%M%S'`
+          echo "VERSION=$version" >> $GITHUB_ENV
+          echo "::set-output name=VERSION::$version"
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: main-${{ env.VERSION }}
+          path: | 
+            main
+            Dockerfile
+            docker-compose.yml
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: download artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: main-${{ needs.build.outputs.VERSION }}
+
+      - name: docker login
+        uses: aliyun/acr-login@v1
+        with:
+          login-server: ${{ env.REGISTRY_HOST }}
+          username: ${{ env.REGISTRY_USERNAME }}
+          password: ${{ env.REGISTRY_PASSWORD }}
+
+      - name: build & push docker image
+        run: |
+          chmod u+x main
+          docker build -t registry.cn-shanghai.aliyuncs.com/ccccfz/main:${{ needs.build.outputs.VERSION }} .
+          docker push registry.cn-shanghai.aliyuncs.com/ccccfz/main:${{ needs.build.outputs.VERSION }}
+
+      - name: replace docker-compose file version
+        run: |
+          sed -i "s/ccccfz\/main:\S*/ccccfz\/main:${{ needs.build.outputs.VERSION }}/" docker-compose.yml
+
+      - name: scp docker-compose file
+        uses: appleboy/scp-action@master
+        with:
+          username: root
+          host: ${{ env.SSH_HOST }}
+          key: ${{ env.SSH_KEY }}
+          source: "docker-compose.yml"
+          target: "~"
+
+  deploy:
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - name: deploy docker image
+        uses: appleboy/ssh-action@master
+        with:
+          username: root
+          host: ${{ env.SSH_HOST }}
+          key: ${{ env.SSH_KEY }}
+          script: |
+            docker-compose pull main
+            docker-compose up -d main
+            docker image prune -af
+
+  result:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: slack notify
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ env.SLACK_WEBHOOK_URL }}
+          SLACK_CHANNEL: ${{ env.SLACK_CHANNEL }}
+          SLACK_USERNAME: ${{ env.SLACK_USERNAME }}
+          SLACK_TITLE: Docker CI/CD Workflow Result
+          SLACK_MESSAGE: ${{ job.status }}
+          SLACK_COLOR: ${{ job.status }}
+#          MSG_MINIMAL: true
+
+      - name: Docker CI/CD Workflow Result
+        run: echo "${{ job.status }}"

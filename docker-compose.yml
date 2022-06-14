@@ -1,0 +1,9 @@
+version: "3"
+
+services:
+  main:
+    hostname: main
+    image: registry.cn-shanghai.aliyuncs.com/ccccfz/main:latest
+    container_name: main
+    privileged: true
+    restart: always

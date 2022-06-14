@@ -1,0 +1,11 @@
+### JetBrains
+.idea/
+
+### MAC
+.DS_Store
+
+### bin
+*.exe
+
+### cmd
+cmd/
