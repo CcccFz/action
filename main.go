@@ -6,8 +6,8 @@ import (
 )
 
 func main() {
-	for {
-		fmt.Println("Hello Golang !!!")
-		time.Sleep(2 * time.Second)
+	for i := 0; ; i++ {
+		fmt.Println(i, "Hello Golang !!!")
+		time.Sleep(5 * time.Second)
 	}
 }

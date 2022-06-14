@@ -123,7 +123,7 @@ jobs:
           SLACK_TITLE: Docker CI/CD Workflow Result
           SLACK_MESSAGE: ${{ job.status }}
           SLACK_COLOR: ${{ job.status }}
-#          MSG_MINIMAL: true
+          SLACK_ICON: https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/Ei-sc-github.svg/2048px-Ei-sc-github.svg.png
 
       - name: Docker CI/CD Workflow Result
         run: echo "${{ job.status }}"
